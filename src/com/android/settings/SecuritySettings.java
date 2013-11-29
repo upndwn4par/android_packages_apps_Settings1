@@ -93,7 +93,6 @@ public class SecuritySettings extends RestrictedSettingsFragment
     private DialogInterface mWarnInstallApps;
     private CheckBoxPreference mToggleVerifyApps;
 
-
     private Preference mNotificationAccess;
 
     private boolean mIsPrimary;
