@@ -830,6 +830,7 @@ two in order to insert additional control points. \'Remove\' deletes the selecte
     <string name="icon_picker_camera">Camera</string>
     <string name="icon_picker_chrome">Chrome</string>
     <string name="icon_picker_contacts">Contacts</string>
+    <string name="icon_picker_dolphin">Dolphin</string>
     <string name="icon_picker_email">Email</string>
     <string name="icon_picker_email2">Email Holo</string>
     <string name="icon_picker_facebook">Facebook</string>
@@ -849,6 +850,7 @@ two in order to insert additional control points. \'Remove\' deletes the selecte
     <string name="icon_picker_snapchat">Snapchat</string>
     <string name="icon_picker_sms">Messaging</string>
     <string name="icon_picker_twitter">Twitter</string>
+    <string name="icon_picker_xda">Xda</string>
 
     <!-- Lock screen buttons -->
     <string name="lockscreen_buttons_title">Button actions</string>

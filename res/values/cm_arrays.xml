@@ -98,6 +98,7 @@
         <item>@string/icon_picker_camera</item>
         <item>@string/icon_picker_chrome</item>
         <item>@string/icon_picker_contacts</item>
+	<item>@string/icon_picker_dolphin</item>
         <item>@string/icon_picker_email</item>
         <item>@string/icon_picker_email2</item>
         <item>@string/icon_picker_facebook</item>
@@ -117,6 +118,7 @@
         <item>@string/icon_picker_search</item>
 	<item>@string/icon_picker_snapchat</item>
         <item>@string/icon_picker_twitter</item>
+	<item>@string/icon_picker_xda</item>
     </string-array>
 
     <string-array name="lockscreen_icon_picker_icons" translatable="false">
@@ -126,6 +128,7 @@
         <item>ic_lockscreen_camera_normal</item>
         <item>ic_lockscreen_chrome_normal</item>
         <item>ic_lockscreen_contacts_normal</item>
+	<item>ic_lockscreen_dolphin_normal</item>
         <item>ic_lockscreen_email_normal</item>
         <item>ic_lockscreen_email2_normal</item>
         <item>ic_lockscreen_facebook_normal</item>
@@ -145,6 +148,7 @@
         <item>ic_lockscreen_google_normal</item>
 	<item>ic_lockscreen_snapchat_normal</item>
         <item>ic_lockscreen_twitter_normal</item>
+	<item>ic_lockscreen_xda_normal</item>
     </string-array>
 
     <string-array name="lockscreen_long_key_press_entries" translatable="false">
