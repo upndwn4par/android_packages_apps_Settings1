@@ -24,7 +24,7 @@
     <string name="general">General</string>
     <string name="layout">Layout</string>
     <string name="privacy">Privacy</string>
-    <string name="lockscreen_notification_summary">Enable and customize lockscreen notifications.</string>
+    <string name="lockscreen_notification_summary">Enable and customize lockscreen notifications</string>
 
     <string name="Lockscreen_notifications_header">Lockscreen Notifications</string>
     <string name="lockscreen_notifications">Notifications</string>
@@ -53,8 +53,8 @@
 
     <!--Custom carrier label-->
     <string name="notification_carrier_label_title">Carrier label</string>
-    <string name="notification_carrier_label_summary">Customize carrier label text for lockscreen and notification drawer. Leave text field blank for stock carrier name.</string>
     <string name="notification_custom_carrier_label_title">Custom carrier label</string>
+    <string name="notification_custom_carrier_label_summary">Customize text for lockscreen and notification drawer. Blank text field displays stock carrier name.</string>
     <string name="notification_custom_carrier_label_explain">Please enter a new label. Enter an empty label to revert to stock label.</string>
     <string name="notification_custom_carrier_label_notset">Custom label currently not set</string>
 
