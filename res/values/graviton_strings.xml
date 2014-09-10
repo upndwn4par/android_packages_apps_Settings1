@@ -19,6 +19,17 @@
     <!-- Graviton settings -->
     <string name="graviton_settings_title" >Graviton</string>
 
+    <!-- Color Picker -->
+    <string name="dialog_color_picker">Color Picker</string>
+    <string name="press_color_to_apply">Press on Color to apply</string>
+    <string name="arrow_right">→</string>
+    <string name="arrow_down">↓</string>
+    <string name="hex">Hex:</string>
+    <string name="hex_hint">#FF000000</string>
+    <string name="set">Set</string>
+    <string name="ics_color">Holo</string>
+    <string name="color_default">Default</string>
+
     <!-- Lockscreen Notifications -->
     <!-- Categories -->
     <string name="general">General</string>
@@ -61,5 +72,14 @@
     <!-- Lock before unlock -->
     <string name="lock_before_unlock_title">Show slider before unlock</string>
     <string name="lock_before_unlock_summary">Show slider lockscreen before secure unlock mechanism</string>
+
+    <!-- Battery bar -->
+    <string name="battery_bar_cat">Battery bar</string>
+    <string name="battery_bar">Battery bar location</string>
+    <string name="battery_bar_color">Battery bar color</string>
+    <string name="battery_bar_style_title">Battery bar style</string>
+    <string name="battery_bar_thickness_title">Battery bar thickness</string>
+    <string name="battery_bar_animate_title">Charging animation</string>
+    <string name="battery_bar_animate_summary">Enable battery bar charge charge animation.</string>
 
 </resources>
