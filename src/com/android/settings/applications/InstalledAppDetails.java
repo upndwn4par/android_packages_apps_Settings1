@@ -16,7 +16,6 @@
 
 package com.android.settings.applications;
 
-import android.content.pm.ActivityInfo;
 import com.android.internal.telephony.ISms;
 import com.android.internal.telephony.SmsUsageMonitor;
 import com.android.settings.R;
@@ -26,7 +25,6 @@ import com.android.settings.applications.ApplicationsState.AppEntry;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
-import android.app.AppOpsManager;
 import android.app.Dialog;
 import android.app.DialogFragment;
 import android.app.Fragment;
@@ -86,7 +84,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
-import com.android.settings.cyanogenmod.ProtectedAppsReceiver;
 
 /**
  * Activity to display application information from Settings. This activity presents
@@ -109,6 +106,7 @@ public class InstalledAppDetails extends Fragment
     private IUsbManager mUsbManager;
     private AppWidgetManager mAppWidgetManager;
     private DevicePolicyManager mDpm;
+    private INotificationManager mNotificationManager;
     private ISms mSmsManager;
     private ApplicationsState mState;
     private ApplicationsState.Session mSession;
@@ -118,8 +116,8 @@ public class InstalledAppDetails extends Fragment
     private PackageInfo mPackageInfo;
     private CanBeOnSdCardChecker mCanBeOnSdCardChecker;
     private View mRootView;
+    private static View mBlacklistDialogView;
     private Button mUninstallButton;
-    private View mMoreControlButtons;
     private Button mSpecialDisableButton;
     private boolean mMoveInProgress = false;
     private boolean mUpdatedSysApp = false;
@@ -127,6 +125,7 @@ public class InstalledAppDetails extends Fragment
     private View mScreenCompatSection;
     private CheckBox mAskCompatibilityCB;
     private CheckBox mEnableCompatibilityCB;
+    private CheckBox mFloatingBlacklist;
     private boolean mCanClearData = true;
     private TextView mAppVersion;
     private TextView mTotalSize;
@@ -142,11 +141,10 @@ public class InstalledAppDetails extends Fragment
     private Button mForceStopButton;
     private Button mClearDataButton;
     private Button mMoveAppButton;
+    private Button mBlacklistButton;
     private CompoundButton mNotificationSwitch;
-    private CompoundButton mPrivacyGuardSwitch;
 
     private PackageMoveObserver mPackageMoveObserver;
-    private AppOpsManager mAppOps;
 
     private final HashSet<String> mHomePackages = new HashSet<String>();
 
@@ -186,16 +184,14 @@ public class InstalledAppDetails extends Fragment
     private static final int DLG_DISABLE = DLG_BASE + 7;
     private static final int DLG_DISABLE_NOTIFICATIONS = DLG_BASE + 8;
     private static final int DLG_SPECIAL_DISABLE = DLG_BASE + 9;
-    private static final int DLG_PRIVACY_GUARD = DLG_BASE + 10;
+    private static final int DLG_BLACKLIST = DLG_BASE + 10;
 
     // Menu identifiers
     public static final int UNINSTALL_ALL_USERS_MENU = 1;
-    public static final int OPEN_PROTECTED_APPS = 2;
 
     // Result code identifiers
     public static final int REQUEST_UNINSTALL = 1;
     public static final int REQUEST_MANAGE_SPACE = 2;
-    public static final int REQUEST_TOGGLE_PROTECTION = 3;
 
     private Handler mHandler = new Handler() {
         public void handleMessage(Message msg) {
@@ -252,7 +248,6 @@ public class InstalledAppDetails extends Fragment
     }
     
     private void initDataButtons() {
-        boolean enabled = false;
         // If the app doesn't have its own space management UI
         // And it's a system app that doesn't allow clearing user data or is an active admin
         // Then disable the Clear Data button.
@@ -262,7 +257,7 @@ public class InstalledAppDetails extends Fragment
                         == ApplicationInfo.FLAG_SYSTEM
                         || mDpm.packageHasActiveAdmins(mPackageInfo.packageName))) {
             mClearDataButton.setText(R.string.clear_user_data_text);
-            enabled = false;
+            mClearDataButton.setEnabled(false);
             mCanClearData = false;
         } else {
             if (mAppEntry.info.manageSpaceActivityName != null) {
@@ -270,18 +265,6 @@ public class InstalledAppDetails extends Fragment
             } else {
                 mClearDataButton.setText(R.string.clear_user_data_text);
             }
-            enabled = true;
-        }
-
-        // This is a protected app component.
-        // You cannot clear data for a protected component
-        if (mPackageInfo.applicationInfo.protect) {
-            enabled = false;
-        }
-
-        mClearDataButton.setEnabled(enabled);
-        mCanClearData = enabled;
-        if (enabled) {
             mClearDataButton.setOnClickListener(this);
         }
     }
@@ -370,9 +353,9 @@ public class InstalledAppDetails extends Fragment
                 specialDisable = handleDisableable(mSpecialDisableButton);
                 mSpecialDisableButton.setOnClickListener(this);
             }
-            mMoreControlButtons.setVisibility(specialDisable ? View.VISIBLE : View.GONE);
+            mSpecialDisableButton.setVisibility(specialDisable ? View.VISIBLE : View.INVISIBLE);
         } else {
-            mMoreControlButtons.setVisibility(View.GONE);
+            mSpecialDisableButton.setVisibility(View.INVISIBLE);
             if ((mAppEntry.info.flags & ApplicationInfo.FLAG_SYSTEM) != 0) {
                 enabled = handleDisableable(mUninstallButton);
             } else if ((mPackageInfo.applicationInfo.flags
@@ -389,12 +372,6 @@ public class InstalledAppDetails extends Fragment
         // If this is a device admin, it can't be uninstalled or disabled.
         // We do this here so the text of the button is still set correctly.
         if (mDpm.packageHasActiveAdmins(mPackageInfo.packageName)) {
-            enabled = false;
-        }
-
-        // This is a protected app component.
-        // You cannot a uninstall a protected component
-        if (mPackageInfo.applicationInfo.protect) {
             enabled = false;
         }
 
@@ -421,12 +398,26 @@ public class InstalledAppDetails extends Fragment
         }
     }
 
+    private void initBlacklistButton() {
+        mBlacklistButton.setText(R.string.blacklist_button_title);
+
+        boolean allowedForFloating = true;
+        try {
+            allowedForFloating = mNotificationManager
+                    .isPackageAllowedForFloatingMode(mAppEntry.info.packageName);
+        } catch (android.os.RemoteException ex) {
+            // uh oh
+        }
+        mFloatingBlacklist.setChecked(!allowedForFloating);
+        mFloatingBlacklist.setOnCheckedChangeListener(this);
+
+        mBlacklistButton.setOnClickListener(this);
+    }
+
     private void initNotificationButton() {
-        INotificationManager nm = INotificationManager.Stub.asInterface(
-                ServiceManager.getService(Context.NOTIFICATION_SERVICE));
         boolean enabled = true; // default on
         try {
-            enabled = nm.areNotificationsEnabledForPackage(mAppEntry.info.packageName,
+            enabled = mNotificationManager.areNotificationsEnabledForPackage(mAppEntry.info.packageName,
                     mAppEntry.info.uid);
         } catch (android.os.RemoteException ex) {
             // this does not bode well
@@ -438,17 +429,6 @@ public class InstalledAppDetails extends Fragment
             mNotificationSwitch.setEnabled(true);
             mNotificationSwitch.setOnCheckedChangeListener(this);
         }
-    }
-
-    private void initPrivacyGuardButton() {
-        if (mPrivacyGuardSwitch == null) {
-            return;
-        }
-        mAppOps = (AppOpsManager) getActivity().getSystemService(Context.APP_OPS_SERVICE);
-        boolean isEnabled = mAppOps.getPrivacyGuardSettingForPackage(
-            mAppEntry.info.uid, mAppEntry.info.packageName);
-        mPrivacyGuardSwitch.setChecked(isEnabled);
-        mPrivacyGuardSwitch.setOnCheckedChangeListener(this);
     }
 
     /** Called when the activity is first created. */
@@ -465,6 +445,8 @@ public class InstalledAppDetails extends Fragment
         mAppWidgetManager = AppWidgetManager.getInstance(getActivity());
         mDpm = (DevicePolicyManager)getActivity().getSystemService(Context.DEVICE_POLICY_SERVICE);
         mSmsManager = ISms.Stub.asInterface(ServiceManager.getService("isms"));
+        mNotificationManager = INotificationManager.Stub.asInterface(
+                ServiceManager.getService(Context.NOTIFICATION_SERVICE));
 
         mCanBeOnSdCardChecker = new CanBeOnSdCardChecker();
 
@@ -505,11 +487,11 @@ public class InstalledAppDetails extends Fragment
         mForceStopButton.setEnabled(false);
         
         // Get More Control button panel
-        mMoreControlButtons = view.findViewById(R.id.more_control_buttons_panel);
-        mMoreControlButtons.findViewById(R.id.left_button).setVisibility(View.INVISIBLE);
-        mSpecialDisableButton = (Button)mMoreControlButtons.findViewById(R.id.right_button);
-        mMoreControlButtons.setVisibility(View.GONE);
-        
+        View moreCtrlBtns = view.findViewById(R.id.more_control_buttons_panel);
+        mBlacklistButton = (Button)moreCtrlBtns.findViewById(R.id.left_button);
+        mSpecialDisableButton = (Button)moreCtrlBtns.findViewById(R.id.right_button);
+        mSpecialDisableButton.setVisibility(View.INVISIBLE);
+
         // Initialize clear data and move install location buttons
         View data_buttons_panel = view.findViewById(R.id.data_buttons_panel);
         mClearDataButton = (Button) data_buttons_panel.findViewById(R.id.right_button);
@@ -527,7 +509,10 @@ public class InstalledAppDetails extends Fragment
         mEnableCompatibilityCB = (CheckBox)view.findViewById(R.id.enable_compatibility_cb);
         
         mNotificationSwitch = (CompoundButton) view.findViewById(R.id.notification_switch);
-        mPrivacyGuardSwitch = (CompoundButton) view.findViewById(R.id.privacy_guard_switch);
+
+        mBlacklistDialogView = inflater.inflate(R.layout.blacklist_dialog, null);
+
+        mFloatingBlacklist = (CheckBox) mBlacklistDialogView.findViewById(R.id.floating_blacklist);
 
         return view;
     }
@@ -536,9 +521,6 @@ public class InstalledAppDetails extends Fragment
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         menu.add(0, UNINSTALL_ALL_USERS_MENU, 1, R.string.uninstall_all_users_text)
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
-        menu.add(0, OPEN_PROTECTED_APPS, Menu.NONE, R.string.protected_apps)
-                .setIcon(getResources().getDrawable(R.drawable.folder_lock))
-                .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
     }
 
     @Override
@@ -558,8 +540,6 @@ public class InstalledAppDetails extends Fragment
             showIt = false;
         }
         menu.findItem(UNINSTALL_ALL_USERS_MENU).setVisible(showIt);
-
-        menu.findItem(OPEN_PROTECTED_APPS).setVisible(mPackageInfo.applicationInfo.protect);
     }
 
     @Override
@@ -568,10 +548,6 @@ public class InstalledAppDetails extends Fragment
         if (menuId == UNINSTALL_ALL_USERS_MENU) {
             uninstallPkg(mAppEntry.info.packageName, true, false);
             return true;
-        } else if (menuId == OPEN_PROTECTED_APPS) {
-            // Verify protection for toggling protected component status
-            Intent protectedApps = new Intent(getActivity(), LockPatternActivity.class);
-            startActivityForResult(protectedApps, REQUEST_TOGGLE_PROTECTION);
         }
         return false;
     }
@@ -597,36 +573,6 @@ public class InstalledAppDetails extends Fragment
             if (!refreshUi()) {
                 setIntentAndFinish(true, true);
             }
-        } else if (requestCode == REQUEST_TOGGLE_PROTECTION) {
-            switch (resultCode) {
-                case Activity.RESULT_OK:
-                    new ToggleProtectedAppComponents().execute();
-                    break;
-                case Activity.RESULT_CANCELED:
-                    // User failed to enter/confirm a lock pattern, do nothing
-                    break;
-            }
-        }
-    }
-    private class ToggleProtectedAppComponents extends AsyncTask<Void, Void, Void> {
-        @Override
-        protected void onPostExecute(Void aVoid) {
-            getActivity().invalidateOptionsMenu();
-            if (!refreshUi()) {
-                setIntentAndFinish(true, true);
-            }
-        }
-
-        @Override
-        protected Void doInBackground(Void... params) {
-            ArrayList<ComponentName> components = new ArrayList<ComponentName>();
-            for (ActivityInfo aInfo : mPackageInfo.activities) {
-                components.add(new ComponentName(aInfo.packageName, aInfo.name));
-            }
-
-            ProtectedAppsReceiver.updateProtectedAppComponentsAndNotify(getActivity(),
-                    components, PackageManager.COMPONENT_VISIBLE_STATUS);
-            return null;
         }
     }
 
@@ -656,10 +602,9 @@ public class InstalledAppDetails extends Fragment
         // Set application name.
         TextView label = (TextView) appSnippet.findViewById(R.id.app_name);
         label.setText(mAppEntry.label);
-        // Set application package name.
-        TextView packageName = (TextView) appSnippet.findViewById(R.id.app_pkgname);
-        packageName.setText(mAppEntry.info.packageName);
-        packageName.setVisibility(View.VISIBLE);
+	// Set application package name
+	TextView packageName = (TextView) appSnippet.findViewById(R.id.app_pkgname);
+	packageName.setText(mAppEntry.info.packageName);
         // Version number of application
         mAppVersion = (TextView) appSnippet.findViewById(R.id.app_size);
 
@@ -733,8 +678,7 @@ public class InstalledAppDetails extends Fragment
                 mPackageInfo = mPm.getPackageInfo(mAppEntry.info.packageName,
                         PackageManager.GET_DISABLED_COMPONENTS |
                         PackageManager.GET_UNINSTALLED_PACKAGES |
-                        PackageManager.GET_SIGNATURES |
-                        PackageManager.GET_ACTIVITIES);
+                        PackageManager.GET_SIGNATURES);
             } catch (NameNotFoundException e) {
                 Log.e(TAG, "Exception when retrieving package:" + mAppEntry.info.packageName, e);
             }
@@ -984,11 +928,6 @@ public class InstalledAppDetails extends Fragment
             }
         }
 
-        // only setup the privacy guard setting if we didn't get uninstalled
-        if (!mMoveInProgress) {
-            initPrivacyGuardButton();
-        }
-
         return true;
     }
 
@@ -1129,11 +1068,13 @@ public class InstalledAppDetails extends Fragment
             initDataButtons();
             initMoveButton();
             initNotificationButton();
+            initBlacklistButton();
         } else {
             mMoveAppButton.setText(R.string.moving);
             mMoveAppButton.setEnabled(false);
             mUninstallButton.setEnabled(false);
             mSpecialDisableButton.setEnabled(false);
+            mBlacklistButton.setEnabled(false);
         }
     }
 
@@ -1312,7 +1253,7 @@ public class InstalledAppDetails extends Fragment
                     .setNegativeButton(R.string.dlg_cancel,
                         new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialog, int which) {
-                            dialog.cancel();
+                            getOwner().mNotificationSwitch.setChecked(true);
                         }
                     })
                     .create();
@@ -1331,48 +1272,23 @@ public class InstalledAppDetails extends Fragment
                     })
                     .setNegativeButton(R.string.dlg_cancel, null)
                     .create();
-                case DLG_PRIVACY_GUARD:
-                    final int messageResId;
-                    if ((getOwner().mAppEntry.info.flags & ApplicationInfo.FLAG_SYSTEM) != 0) {
-                        messageResId = R.string.privacy_guard_dlg_system_app_text;
-                    } else {
-                        messageResId = R.string.privacy_guard_dlg_text;
-                    }
-
-                    return new AlertDialog.Builder(getActivity())
-                    .setTitle(R.string.privacy_guard_dlg_title)
-                    .setIconAttribute(android.R.attr.alertDialogIcon)
-                    .setMessage(messageResId)
-                    .setPositiveButton(R.string.dlg_ok,
-                        new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int which) {
-                            getOwner().setPrivacyGuard(true);
-                        }
-                    })
-                    .setNegativeButton(R.string.dlg_cancel,
-                        new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int which) {
-                            dialog.cancel();
-                        }
-                    })
-                    .create();
+                case DLG_BLACKLIST:
+                    AlertDialog dialog = new AlertDialog.Builder(getActivity())
+                            .setTitle(getActivity().getText(R.string.blacklist_button_title))
+                            .setView(mBlacklistDialogView)
+                            .setNeutralButton(R.string.dlg_ok, new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    ((ViewGroup)mBlacklistDialogView.getParent())
+                                            .removeView(mBlacklistDialogView);
+                                }
+                            })
+                            .create();
+                    dialog.setCanceledOnTouchOutside(false);
+                    dialog.setCancelable(false);
+                    return dialog;
             }
             throw new IllegalArgumentException("unknown id " + id);
-        }
-
-        @Override
-        public void onCancel(DialogInterface dialog) {
-            int id = getArguments().getInt("id");
-            switch (id) {
-                case DLG_DISABLE_NOTIFICATIONS:
-                    // Re-enable the checkbox
-                    getOwner().mNotificationSwitch.setChecked(true);
-                    break;
-                case DLG_PRIVACY_GUARD:
-                    // Re-enable the checkbox
-                    getOwner().mPrivacyGuardSwitch.setChecked(false);
-                    break;
-            }
         }
     }
 
@@ -1449,20 +1365,21 @@ public class InstalledAppDetails extends Fragment
     }
 
     private void setNotificationsEnabled(boolean enabled) {
-        String packageName = mAppEntry.info.packageName;
-        INotificationManager nm = INotificationManager.Stub.asInterface(
-                ServiceManager.getService(Context.NOTIFICATION_SERVICE));
         try {
             final boolean enable = mNotificationSwitch.isChecked();
-            nm.setNotificationsEnabledForPackage(packageName, mAppEntry.info.uid, enabled);
+            mNotificationManager.setNotificationsEnabledForPackage(
+                    mAppEntry.info.packageName, mAppEntry.info.uid, enabled);
         } catch (android.os.RemoteException ex) {
             mNotificationSwitch.setChecked(!enabled); // revert
         }
     }
 
-    private void setPrivacyGuard(boolean enabled) {
-        mAppOps.setPrivacyGuardSettingForPackage(
-            mAppEntry.info.uid, mAppEntry.info.packageName, enabled);
+    private void setFloatingModeState(boolean state) {
+        try {
+            mNotificationManager.setFloatingModeBlacklistStatus(mAppEntry.info.packageName, state);
+        } catch (android.os.RemoteException ex) {
+            mFloatingBlacklist.setChecked(!state); // revert
+        }
     }
 
     private int getPremiumSmsPermission(String packageName) {
@@ -1543,6 +1460,8 @@ public class InstalledAppDetails extends Fragment
             mMoveInProgress = true;
             refreshButtons();
             mPm.movePackage(mAppEntry.info.packageName, mPackageMoveObserver, moveFlags);
+        } else if (v == mBlacklistButton) {
+            showDialogInner(DLG_BLACKLIST, 0);
         }
     }
 
@@ -1562,12 +1481,8 @@ public class InstalledAppDetails extends Fragment
             } else {
                 setNotificationsEnabled(true);
             }
-        } else if (buttonView == mPrivacyGuardSwitch) {
-            if (isChecked) {
-                showDialogInner(DLG_PRIVACY_GUARD, 0);
-            } else {
-                setPrivacyGuard(false);
-            }
+        } else if (buttonView == mFloatingBlacklist) {
+            setFloatingModeState(isChecked);
         }
     }
 }
